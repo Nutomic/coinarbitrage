@@ -6,13 +6,13 @@ use crate::korbit::korbit_aggregate;
 use crate::kraken::kraken_aggregate;
 use crate::newtypes::{Euro, Percent};
 use anyhow::Error;
-use tabled::{Table, Tabled};
+use tabled::object::Segment;
+use tabled::{Alignment, Modify, Table, Tabled};
 
 const KRW_TO_USD: Euro = Euro(0.000746);
 
 fn main() -> Result<(), Error> {
     let korbit_aggregate = korbit_aggregate()?;
-
     let kraken_aggregate = kraken_aggregate()?;
 
     let mut both_aggregate: Vec<BothAggregate> = kraken_aggregate
@@ -39,17 +39,7 @@ fn main() -> Result<(), Error> {
         })
         .collect();
 
-    // TODO: why are btc and other pairs missing?
-    let kraken_unmatched: Vec<String> = kraken_aggregate
-        .iter()
-        .map(|k| k.crypto_market.clone())
-        .filter(|kraken| {
-            !korbit_aggregate
-                .iter()
-                .any(|korbit| &korbit.crypto_market == kraken)
-        })
-        .filter(|k| k.contains("btc"))
-        .collect();
+    // TODO: some pairs are still missing
     let korbit_unmatched: Vec<String> = korbit_aggregate
         .iter()
         .map(|k| k.crypto_market.clone())
@@ -59,10 +49,11 @@ fn main() -> Result<(), Error> {
                 .any(|kraken| &kraken.crypto_market == korbit)
         })
         .collect();
-    dbg!(&korbit_unmatched, &kraken_unmatched);
+    dbg!(&korbit_unmatched);
 
     both_aggregate.sort_by(|a, b| b.price_difference.0.total_cmp(&a.price_difference.0));
-    let table = Table::new(both_aggregate.clone()).to_string();
+    let mut table = Table::new(both_aggregate.clone());
+    table.with(Modify::new(Segment::all()).with(Alignment::right()));
     print!("{}", table);
 
     Ok(())

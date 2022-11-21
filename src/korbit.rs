@@ -30,7 +30,7 @@ pub fn korbit_aggregate() -> Result<Vec<KorbitAggregate>, Error> {
             k.volume = Euro((k.volume * k.price).0.round());
             k
         })
-        .filter(|k| k.volume > Euro(1000.))
+        .filter(|k| k.volume > Euro(3000.))
         .collect();
 
     // sort by volume

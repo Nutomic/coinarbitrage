@@ -19,7 +19,15 @@ pub fn kraken_aggregate() -> Result<Vec<KrakenAggregate>, Error> {
         .filter(|(k, _)| k.contains("eur"))
         .map(|(k, v)| (k.replace("eur", ""), v))
         // need to fix some ticker mappings
-        .map(|(k, v)| (k.replace("xethz", "eth").replace("xxbtz", "btc"), v))
+        .map(|(k, v)| {
+            (
+                k.replace("xethz", "eth")
+                    .replace("xxbtz", "btc")
+                    .replace("xxrpz", "xrp")
+                    .replace("xdg", "doge"),
+                v,
+            )
+        })
         .map(|(k, v)| {
             let price =
                 Euro((v.a[0].parse::<f32>().unwrap() + v.b[0].parse::<f32>().unwrap()) / 2.);
@@ -34,7 +42,7 @@ pub fn kraken_aggregate() -> Result<Vec<KrakenAggregate>, Error> {
             k.volume = Euro((k.volume * k.price).0.round());
             k
         })
-        .filter(|k| k.volume > Euro(1000.))
+        .filter(|k| k.volume > Euro(3000.))
         .collect();
 
     // sort by volume
