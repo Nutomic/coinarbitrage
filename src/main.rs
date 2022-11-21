@@ -30,7 +30,7 @@ fn main() -> Result<(), Error> {
         })
         // convert volume currency from crypto to eur
         .map(|mut k| {
-            k.volume = k.volume * k.price;
+            k.volume = Euro((k.volume * k.price).0.round());
             k
         })
         .filter(|k| k.volume > Euro(1000.))
@@ -43,17 +43,20 @@ fn main() -> Result<(), Error> {
     let kraken: KrakenResult = ureq::get("https://api.kraken.com/0/public/Ticker")
         .call()?
         .into_json()?;
+    if kraken.error.is_empty() {
+        dbg!(&kraken.error);
+    }
     let mut both_aggregate: Vec<BothAggregate> = kraken
         .result
         .iter()
         .map(|(k, v)| (k.replace("TBTCEUR", "btceur"), v))
         .map(|(k, v)| (k.to_lowercase(), v))
         // only eur pairs (todo: add other pairs)
-        .filter(|(k, v)| k.contains("eur"))
+        .filter(|(k, _)| k.contains("eur"))
         .map(|(k, v)| (k.replace("eur", ""), v))
         // need to fix some ticker mappings
         .map(|(k, v)| (k.replace("xethz", "eth").replace("tbtc", "btc"), v))
-        .filter(|(k, v)| korbit_aggregate.iter().any(|k2| &k2.crypto_market == k))
+        .filter(|(k, _)| korbit_aggregate.iter().any(|k2| &k2.crypto_market == k))
         .map(|(k, v)| {
             let korbit = korbit_aggregate
                 .iter()
@@ -64,16 +67,16 @@ fn main() -> Result<(), Error> {
                 Euro((v.a[0].parse::<f32>().unwrap() + v.b[0].parse::<f32>().unwrap()) / 2.);
             BothAggregate {
                 crypto_market: k,
-                price_difference: (kraken_price.0 / korbit.price.0) * 100. - 100.,
                 kraken_price,
-                kraken_volume: Euro(v.v[0].parse().unwrap()),
                 korbit_price: korbit.price,
+                price_difference: Percent((korbit.price.0 / kraken_price.0) * 100. - 100.),
+                kraken_volume: Euro(v.v[0].parse().unwrap()),
                 korbit_volume: korbit.volume,
             }
         })
         // convert kraken volume currency from crypto to eur
         .map(|mut k| {
-            k.kraken_volume = k.kraken_volume * k.kraken_price;
+            k.kraken_volume = Euro((k.kraken_volume * k.kraken_price).0.round());
             k
         })
         .filter(|k| k.kraken_volume > Euro(1000.))
@@ -96,7 +99,7 @@ fn main() -> Result<(), Error> {
         .collect();
     dbg!(&korbit_unmatched, &kraken_unmatched);
 
-    both_aggregate.sort_by(|a, b| b.price_difference.total_cmp(&a.price_difference));
+    both_aggregate.sort_by(|a, b| b.price_difference.0.total_cmp(&a.price_difference.0));
     let table = Table::new(both_aggregate.clone()).to_string();
     print!("{}", table);
 
@@ -107,6 +110,7 @@ pub type Korbit = HashMap<String, KorbitMarket>;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct KorbitMarket {
     timestamp: i64,
     #[serde(deserialize_with = "deserialize_number_from_string")]
@@ -143,15 +147,15 @@ pub struct KorbitAggregate {
 pub struct BothAggregate {
     #[tabled(rename = "Market")]
     crypto_market: String,
-    #[tabled(rename = "Price Difference (Percent)")]
-    price_difference: f32,
-    #[tabled(rename = "Kraken Price (Eur)")]
+    #[tabled(rename = "Kraken Price")]
     kraken_price: Euro,
-    #[tabled(rename = "Kraken Volume (Eur)")]
-    kraken_volume: Euro,
-    #[tabled(rename = "Korbit Price (Eur)")]
+    #[tabled(rename = "Korbit Price")]
     korbit_price: Euro,
-    #[tabled(rename = "Korbit Volume (Eur)")]
+    #[tabled(rename = "Korbit Premium")]
+    price_difference: Percent,
+    #[tabled(rename = "Kraken Volume")]
+    kraken_volume: Euro,
+    #[tabled(rename = "Korbit Volume")]
     korbit_volume: Euro,
 }
 
@@ -160,7 +164,7 @@ pub struct Euro(f32);
 
 impl Display for Euro {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.separate_with_commas())
+        write!(f, "{} €", self.0.separate_with_spaces())
     }
 }
 
@@ -169,6 +173,15 @@ impl Mul for Euro {
 
     fn mul(self, rhs: Self) -> Self::Output {
         Euro(self.0.mul(rhs.0))
+    }
+}
+
+#[derive(Debug, Tabled, PartialOrd, PartialEq, Copy, Clone)]
+pub struct Percent(f32);
+
+impl Display for Percent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.2} %", self.0)
     }
 }
 
